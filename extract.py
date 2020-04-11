@@ -1,5 +1,6 @@
 import argparse
 import re
+import shutil
 import subprocess
 from concurrent import futures
 from concurrent.futures.process import ProcessPoolExecutor
@@ -38,18 +39,17 @@ def parse_args() -> argparse.Namespace:
 
 def parse_banks_metadata(wwise_dir: Path) -> dict:
     fut2txt_file = {}
-    bank_data = {}
+    bnk_file2metadata = {}
     with ProcessPoolExecutor() as executor:
         for txt_file in wwise_dir.rglob("*.txt"):
             fut2txt_file[executor.submit(parse_bank_metadata, txt_file)] = txt_file
 
         for completed_fut in futures.as_completed(fut2txt_file):
             result = completed_fut.result()
-            if result:
-                txt_file = fut2txt_file[completed_fut]
-                bank_data[txt_file.stem] = result
+            txt_file = fut2txt_file[completed_fut]
+            bnk_file2metadata[txt_file.stem] = result
 
-    return bank_data
+    return bnk_file2metadata
 
 
 def parse_bank_metadata(bank: Path) -> List[BankMetaData]:
@@ -72,17 +72,18 @@ def parse_bank_metadata(bank: Path) -> List[BankMetaData]:
 
 
 def decode_banks(wwise_dir: Path, out_dir: Path) -> dict:
-    ret = {}
-    futs = []
+    orig_bnk2decode_info = {}
+    fut2orig_bnk = {}
     with ProcessPoolExecutor() as executor:
         for bnk_file in wwise_dir.rglob("*.bnk"):
-            futs.append(executor.submit(decode_bank, bnk_file, out_dir))
+            fut2orig_bnk[executor.submit(decode_bank, bnk_file, out_dir)] = bnk_file
 
-    for completed_fut in futures.as_completed(futs):
-        for k, v in completed_fut.result().items():
-            ret[k] = v
+    for completed_fut in futures.as_completed(fut2orig_bnk):
+        result = completed_fut.result()
+        orig_bnk = fut2orig_bnk[completed_fut]
+        orig_bnk2decode_info[orig_bnk] = result
 
-    return ret
+    return orig_bnk2decode_info
 
 
 def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
@@ -104,7 +105,7 @@ def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
     filename2datasize = {}
     matches = re.finditer(QUICKBMS_OUT_PAT, quickbms_out)
     for match in matches:
-        dsize = match.group(1)
+        dsize = int(match.group(1))
         fname = match.group(2)
         filename2datasize[Path(fname).stem] = dsize
 
@@ -124,20 +125,46 @@ def main():
         fut2func[(executor.submit(parse_banks_metadata, wwise_dir))] = parse_banks_metadata
         fut2func[(executor.submit(decode_banks, wwise_dir, out_dir))] = decode_banks
 
-    metas = {}
-    fname2dsize = {}
+    bnk_meta_file2metadata = {}
+    orig_bnk2decode_info = {}
     for completed_fut in futures.as_completed(fut2func):
         if fut2func[completed_fut] == parse_banks_metadata:
-            metas = completed_fut.result()
+            bnk_meta_file2metadata = completed_fut.result()
         elif fut2func[completed_fut] == decode_banks:
-            fname2dsize = completed_fut.result()
+            orig_bnk2decode_info = completed_fut.result()
 
-    for bnk_meta_file, metadata in metas.items():
-        print(bnk_meta_file)
+    if len(bnk_meta_file2metadata) != len(orig_bnk2decode_info):
+        raise ValueError(
+            f"Amount of Bank and metadata files "
+            f"do not match ({len(orig_bnk2decode_info)} != {len(bnk_meta_file2metadata)})")
 
-    for fname, dsize in fname2dsize.items():
-        original_bnk_stem = "_".join(Path(fname).stem.split("_")[:-1])
+    matches = {}
+
+    # Let's do it the lazy fucking way and go for the triple-nested for-loop.
+    for orig_bnk_file, decode_info in orig_bnk2decode_info.items():
+        orig_bnk_file = orig_bnk_file.stem
+        meta = bnk_meta_file2metadata[orig_bnk_file]
+        for m in meta:
+            for decoded_file, decoded_data_size in decode_info.items():
+                if decoded_data_size == m.data_size:
+                    # TODO: handle this edge-case later. It's not happening for
+                    #   RS2 files anyway.
+                    # if decoded_file in matches:
+                    #     matches[decoded_file] = [matches[decoded_file]]
+                    #     matches[decoded_file].append(m)
+                    # else:
+
+                    matches[decoded_file] = m
+
+    for decoded_file, meta in matches.items():
+        src = out_dir / f"{decoded_file}.bin"
+        notes_path = Path(meta.notes)
+        dst = out_dir / notes_path.relative_to(notes_path.anchor) / f"{decoded_file}.bin"
+        if not dst.exists():
+            dst.mkdir(parents=True)
+        print(f"moving '{src}' -> '{dst}'")
+        shutil.move(str(src.absolute()), str(dst.absolute()))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
