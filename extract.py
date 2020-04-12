@@ -1,6 +1,5 @@
 import argparse
 import re
-import shutil
 import subprocess
 from concurrent import futures
 from concurrent.futures.process import ProcessPoolExecutor
@@ -8,8 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
-WAVESCAN = Path("wavescan.bms")
-QUICKBMS = Path("quickbms.exe")
+WAVESCAN = Path("bin/wavescan.bms")
+QUICKBMS = Path("bin/quickbms.exe")
+WW2OGG = Path("bin/ww2ogg.exe")
+PCB = Path("bin/packed_codebooks_aoTuV_603.bin")
 
 BANK_PAT = re.compile(r"^\t+([0-9]+)\t+(\w+)\t+([\w:\\.]+)\t+(\\[\w \-\\]+)\t+([0-9]+)$")
 QUICKBMS_OUT_PAT = re.compile(r"\s{2}[0-9]+\s([0-9]+)\s+(.*)\r\n")
@@ -93,14 +94,14 @@ def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
         quickbms_out = subprocess.check_output(
             [str(QUICKBMS.absolute()), "-o", str(WAVESCAN.absolute()),
              str(bnk_file.absolute()), str(out_dir.absolute())],
-            stderr=subprocess.STDOUT
+            stderr=subprocess.STDOUT,
         )
         try:
             quickbms_out = quickbms_out.decode("utf-8")
         except Exception as e:
             print(f"error decoding QuickBMS output for '{bnk_file}': {repr(e)}")
     except subprocess.CalledProcessError as cpe:
-        print(f"error processing '{bnk_file}': {cpe}")
+        print(f"error processing '{bnk_file}': {repr(cpe)}")
 
     filename2datasize = {}
     matches = re.finditer(QUICKBMS_OUT_PAT, quickbms_out)
@@ -110,6 +111,31 @@ def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
         filename2datasize[Path(fname).stem] = dsize
 
     return filename2datasize
+
+
+def move(src: Path, dst: Path):
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+        print(f"moved '{src.absolute()}' -> '{dst.absolute()}'")
+    except Exception as e:
+        print(f"error moving: '{src.absolute()}' to '{dst.absolute()}'"
+              f": {repr(e)}")
+
+
+def ww2ogg(src: Path):
+    out = b""
+    try:
+        print(f"converting '{src.absolute()}' to OGG")
+        out = subprocess.check_output(
+            [WW2OGG, str(src.absolute()), "--pcb", str(PCB.absolute())],
+            stderr=subprocess.STDOUT)
+        src.unlink()
+        print(f"removed {src.absolute()}")
+    except subprocess.CalledProcessError as cpe:
+        print(out.decode("utf-8"))
+        print(f"ww2ogg error for '{src}': {repr(cpe)}: "
+              f"code={cpe.returncode}")
 
 
 def main():
@@ -138,7 +164,7 @@ def main():
             f"Amount of Bank and metadata files "
             f"do not match ({len(orig_bnk2decode_info)} != {len(bnk_meta_file2metadata)})")
 
-    matches = {}
+    decoded_file2metas = {}
 
     # Let's do it the lazy fucking way and go for the triple-nested for-loop.
     for orig_bnk_file, decode_info in orig_bnk2decode_info.items():
@@ -147,23 +173,47 @@ def main():
         for m in meta:
             for decoded_file, decoded_data_size in decode_info.items():
                 if decoded_data_size == m.data_size:
-                    # TODO: handle this edge-case later. It's not happening for
-                    #   RS2 files anyway.
-                    # if decoded_file in matches:
-                    #     matches[decoded_file] = [matches[decoded_file]]
-                    #     matches[decoded_file].append(m)
-                    # else:
+                    if decoded_file in decoded_file2metas:
+                        decoded_file2metas[decoded_file] = [decoded_file2metas[decoded_file]]
+                        decoded_file2metas[decoded_file].append(m)
+                    else:
+                        decoded_file2metas[decoded_file] = m
 
-                    matches[decoded_file] = m
+    fs = []
+    problematic = []
+    with ProcessPoolExecutor() as executor:
+        for decoded_file, meta in decoded_file2metas.items():
+            if isinstance(meta, List):
+                problematic.append((decoded_file, meta))
+                continue
 
-    for decoded_file, meta in matches.items():
-        src = out_dir / f"{decoded_file}.bin"
-        notes_path = Path(meta.notes)
-        dst = out_dir / notes_path.relative_to(notes_path.anchor) / f"{decoded_file}.bin"
-        if not dst.exists():
-            dst.mkdir(parents=True)
-        print(f"moving '{src}' -> '{dst}'")
-        shutil.move(str(src.absolute()), str(dst.absolute()))
+            src = out_dir / f"{decoded_file}.bin"
+            notes_path = Path(meta.notes)
+            dst = out_dir / notes_path.relative_to(notes_path.anchor).with_suffix(".bin")
+            fs.append(executor.submit(move, src, dst))
+
+    futures.wait(fs, return_when=futures.ALL_COMPLETED)
+
+    fs = []
+    with ProcessPoolExecutor() as executor:
+        for bin_file in out_dir.rglob("*.bin"):
+            fs.append(executor.submit(ww2ogg, bin_file))
+
+    futures.wait(fs, return_when=futures.ALL_COMPLETED)
+
+    if problematic:
+        print("******************* WARNING *******************")
+        print("******************* WARNING *******************")
+        print("******************* WARNING *******************")
+
+    for prob in problematic:
+        print(f"problematic file '{Path(prob[0]).absolute()}' with multiple "
+              f"possible output options skipped, please handle it manually")
+
+    if problematic:
+        print("***********************************************")
+        print("***********************************************")
+        print("***********************************************")
 
 
 if __name__ == "__main__":
