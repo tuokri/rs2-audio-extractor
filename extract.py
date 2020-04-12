@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List
 
 if getattr(sys, "frozen", False):
+    # noinspection PyUnresolvedReferences,PyProtectedMember
     BASE_PATH = Path(sys._MEIPASS)
 else:
     BASE_PATH = Path("")
@@ -19,8 +20,11 @@ QUICKBMS = BASE_PATH / Path("bin/quickbms.exe")
 WW2OGG = BASE_PATH / Path("bin/ww2ogg.exe")
 PCB = BASE_PATH / Path("bin/packed_codebooks_aoTuV_603.bin")
 MAX_WORKERS = 1
+P = Path("\\\\?\\")
 
-BANK_PAT = re.compile(r"^\t+([0-9]+)\t+(\w+)\t+([\w:\\.]+)\t+(\\[\w \-\\]+)\t+([0-9]+)$")
+BANK_PAT = re.compile(
+    r"^\t+([0-9]+)\t+([\-\w ]+)\t+([\-\w:\\.() ]+)\t+(\\[\w \-\\]+)\t+([0-9]+)$"
+)
 QUICKBMS_OUT_PAT = re.compile(r"\s{2}[0-9]+\s([0-9]+)\s+(.*)\r\n")
 
 
@@ -107,7 +111,7 @@ def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
         print(f"decoding '{bnk_file.absolute()}'...", flush=True)
         quickbms_out = subprocess.check_output(
             [str(QUICKBMS.absolute()), "-o", str(WAVESCAN.absolute()),
-             str(bnk_file.absolute()), str(out_dir.absolute())],
+             str(P / bnk_file.absolute()), str(P / out_dir.absolute())],
             stderr=subprocess.STDOUT,
         )
         try:
@@ -130,7 +134,7 @@ def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
 def move(src: Path, dst: Path):
     try:
         dst.parent.mkdir(parents=True, exist_ok=True)
-        src.rename(dst)
+        src.replace(dst)
         print(f"moved '{src.absolute()}' -> '{dst.absolute()}'", flush=True)
     except Exception as e:
         print(f"error moving: '{src.absolute()}' to '{dst.absolute()}'"
@@ -142,7 +146,7 @@ def ww2ogg(src: Path):
     try:
         print(f"converting '{src.absolute()}' to OGG", flush=True)
         out = subprocess.check_output(
-            [WW2OGG, str(src.absolute()), "--pcb", str(PCB.absolute())],
+            [WW2OGG, str(P / src.absolute()), "--pcb", str(PCB.absolute())],
             stderr=subprocess.STDOUT)
         src.unlink()
         print(f"removed {src.absolute()}", flush=True)
@@ -183,18 +187,20 @@ def main():
 
     decoded_file2metas = {}
 
-    # Let's do it the lazy fucking way and go for the triple-nested for-loop.
     for orig_bnk_file, decode_info in orig_bnk2decode_info.items():
         orig_bnk_file = orig_bnk_file.stem
         meta = bnk_meta_file2metadata[orig_bnk_file]
-        for m in meta:
-            for decoded_file, decoded_data_size in decode_info.items():
-                if decoded_data_size == m.data_size:
-                    if decoded_file in decoded_file2metas:
-                        decoded_file2metas[decoded_file] = [decoded_file2metas[decoded_file]]
-                        decoded_file2metas[decoded_file].append(m)
-                    else:
-                        decoded_file2metas[decoded_file] = m
+
+        if len(decode_info) != len(meta):
+            print(decode_info)
+            print(meta)
+            raise ValueError(f"decode_info and meta length mismatch "
+                             f"{len(decode_info)} != {len(meta)}")
+
+        for m, (decoded_stem, decoded_size) in zip(meta, decode_info.items()):
+            if m.data_size != decoded_size:
+                raise ValueError(f"{m.data_size} != {decoded_size}")
+            decoded_file2metas[decoded_stem] = m
 
     fs = []
     problematic = []
