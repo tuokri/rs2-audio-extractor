@@ -14,6 +14,10 @@ Parse files in `Wwiseaudio` and write output in `output`:
 
 `extract.exe "C:\...\WwiseAudio" "C:\output"`
 
+## Download
+
+From releases: https://github.com/tuokri/rs2-audio-extractor/releases
+
 ## Troubleshooting 
 
 ### ww2ogg errors
