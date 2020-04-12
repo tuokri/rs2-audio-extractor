@@ -10,7 +10,7 @@ Show help:
 
 `extract.exe --help`
 
-Parse files in `Wwiseaudio` and write output in `output`:
+Parse files in `Wwiseaudio` and write output in `output` in Ogg format:
 
 `extract.exe "C:\...\WwiseAudio" "C:\output"`
 
