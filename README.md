@@ -10,7 +10,7 @@ Show help:
 
 `extract.exe --help`
 
-Parse files in `Wwiseaudio` and output write to `output`:
+Parse files in `Wwiseaudio` and write output in `output`:
 
 `extract.exe "C:\...\WwiseAudio" "C:\output"`
 
