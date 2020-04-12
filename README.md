@@ -20,7 +20,7 @@ From releases: https://github.com/tuokri/rs2-audio-extractor/releases
 
 ## Troubleshooting 
 
-### ww2ogg errors
+### ww2ogg errors or errors opening decoded files
 
 The program output directory will have paths
 longer than the max default Windows path limit. 
@@ -28,10 +28,3 @@ longer than the max default Windows path limit.
 Fix by enabling Win32 long paths and rebooting.
 
 https://www.howtogeek.com/266621/how-to-make-windows-10-accept-file-paths-over-260-characters/
-
-### Problematic file warning
-
-Some audio source files have multiple possible final output name
-candidates so they will have to be handle manually.
-
-Problematic files are place in the root of the output dir.
