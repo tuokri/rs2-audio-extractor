@@ -1,16 +1,24 @@
 import argparse
+import os
 import re
 import subprocess
+import sys
 from concurrent import futures
 from concurrent.futures.process import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
-WAVESCAN = Path("bin/wavescan.bms")
-QUICKBMS = Path("bin/quickbms.exe")
-WW2OGG = Path("bin/ww2ogg.exe")
-PCB = Path("bin/packed_codebooks_aoTuV_603.bin")
+if getattr(sys, "frozen", False):
+    BASE_PATH = Path(sys._MEIPASS)
+else:
+    BASE_PATH = Path("")
+
+WAVESCAN = BASE_PATH / Path("bin/wavescan.bms")
+QUICKBMS = BASE_PATH / Path("bin/quickbms.exe")
+WW2OGG = BASE_PATH / Path("bin/ww2ogg.exe")
+PCB = BASE_PATH / Path("bin/packed_codebooks_aoTuV_603.bin")
+MAX_WORKERS = 1
 
 BANK_PAT = re.compile(r"^\t+([0-9]+)\t+(\w+)\t+([\w:\\.]+)\t+(\\[\w \-\\]+)\t+([0-9]+)$")
 QUICKBMS_OUT_PAT = re.compile(r"\s{2}[0-9]+\s([0-9]+)\s+(.*)\r\n")
@@ -35,13 +43,19 @@ def parse_args() -> argparse.Namespace:
         "out_dir",
         help="path to output directory",
     )
+    ap.add_argument(
+        "--workers",
+        default=os.cpu_count(),
+        type=int,
+        help="number of processors to user, (default=%(default)s)",
+    )
     return ap.parse_args()
 
 
 def parse_banks_metadata(wwise_dir: Path) -> dict:
     fut2txt_file = {}
     bnk_file2metadata = {}
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for txt_file in wwise_dir.rglob("*.txt"):
             fut2txt_file[executor.submit(parse_bank_metadata, txt_file)] = txt_file
 
@@ -68,14 +82,14 @@ def parse_bank_metadata(bank: Path) -> List[BankMetaData]:
                         data_size=int(match.group(5)),
                     ))
     except Exception as e:
-        print(f"error parsing {bank.absolute()}: {repr(e)}")
+        print(f"error parsing {bank.absolute()}: {repr(e)}", flush=True)
     return ret
 
 
 def decode_banks(wwise_dir: Path, out_dir: Path) -> dict:
     orig_bnk2decode_info = {}
     fut2orig_bnk = {}
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for bnk_file in wwise_dir.rglob("*.bnk"):
             fut2orig_bnk[executor.submit(decode_bank, bnk_file, out_dir)] = bnk_file
 
@@ -90,7 +104,7 @@ def decode_banks(wwise_dir: Path, out_dir: Path) -> dict:
 def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
     quickbms_out = []
     try:
-        print(f"decoding '{bnk_file.absolute()}'...")
+        print(f"decoding '{bnk_file.absolute()}'...", flush=True)
         quickbms_out = subprocess.check_output(
             [str(QUICKBMS.absolute()), "-o", str(WAVESCAN.absolute()),
              str(bnk_file.absolute()), str(out_dir.absolute())],
@@ -99,9 +113,9 @@ def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
         try:
             quickbms_out = quickbms_out.decode("utf-8")
         except Exception as e:
-            print(f"error decoding QuickBMS output for '{bnk_file}': {repr(e)}")
+            print(f"error decoding QuickBMS output for '{bnk_file}': {repr(e)}", flush=True)
     except subprocess.CalledProcessError as cpe:
-        print(f"error processing '{bnk_file}': {repr(cpe)}")
+        print(f"error processing '{bnk_file}': {repr(cpe)}", flush=True)
 
     filename2datasize = {}
     matches = re.finditer(QUICKBMS_OUT_PAT, quickbms_out)
@@ -117,29 +131,32 @@ def move(src: Path, dst: Path):
     try:
         dst.parent.mkdir(parents=True, exist_ok=True)
         src.rename(dst)
-        print(f"moved '{src.absolute()}' -> '{dst.absolute()}'")
+        print(f"moved '{src.absolute()}' -> '{dst.absolute()}'", flush=True)
     except Exception as e:
         print(f"error moving: '{src.absolute()}' to '{dst.absolute()}'"
-              f": {repr(e)}")
+              f": {repr(e)}", flush=True)
 
 
 def ww2ogg(src: Path):
     out = b""
     try:
-        print(f"converting '{src.absolute()}' to OGG")
+        print(f"converting '{src.absolute()}' to OGG", flush=True)
         out = subprocess.check_output(
             [WW2OGG, str(src.absolute()), "--pcb", str(PCB.absolute())],
             stderr=subprocess.STDOUT)
         src.unlink()
-        print(f"removed {src.absolute()}")
+        print(f"removed {src.absolute()}", flush=True)
     except subprocess.CalledProcessError as cpe:
-        print(out.decode("utf-8"))
+        print(out.decode("utf-8"), flush=True)
         print(f"ww2ogg error for '{src}': {repr(cpe)}: "
-              f"code={cpe.returncode}")
+              f"code={cpe.returncode}", flush=True)
 
 
 def main():
+    global MAX_WORKERS
+
     args = parse_args()
+    MAX_WORKERS = args.workers
     wwise_dir = Path(args.wwise_dir)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(exist_ok=True)
@@ -147,7 +164,7 @@ def main():
     print(f"processing audio files in '{wwise_dir.absolute()}'")
 
     fut2func = {}
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         fut2func[(executor.submit(parse_banks_metadata, wwise_dir))] = parse_banks_metadata
         fut2func[(executor.submit(decode_banks, wwise_dir, out_dir))] = decode_banks
 
@@ -181,7 +198,7 @@ def main():
 
     fs = []
     problematic = []
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for decoded_file, meta in decoded_file2metas.items():
             if isinstance(meta, List):
                 problematic.append((decoded_file, meta))
@@ -195,7 +212,7 @@ def main():
     futures.wait(fs, return_when=futures.ALL_COMPLETED)
 
     fs = []
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for bin_file in out_dir.rglob("*.bin"):
             fs.append(executor.submit(ww2ogg, bin_file))
 
@@ -207,7 +224,7 @@ def main():
         print("******************* WARNING *******************")
 
     for prob in problematic:
-        print(f"problematic file '{Path(prob[0]).absolute()}' with multiple "
+        print(f"problematic file '{Path(prob[0]).name}' with multiple "
               f"possible output options skipped, please handle it manually")
 
     if problematic:
@@ -217,4 +234,7 @@ def main():
 
 
 if __name__ == "__main__":
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     main()
