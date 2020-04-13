@@ -34,7 +34,6 @@ if getattr(sys, "frozen", False):
 else:
     BASE_PATH = Path("")
 
-MAX_PATH = 260
 WAVESCAN = BASE_PATH / Path("bin/wavescan.bms")
 QUICKBMS = BASE_PATH / Path("bin/quickbms.exe")
 WW2OGG = BASE_PATH / Path("bin/ww2ogg.exe")
@@ -232,16 +231,16 @@ def copy(src: Path, dst: Path):
 def ww2ogg(src: Path):
     out = b""
     try:
-        logger.info("converting '{src}' to OGG", src=src.absolute())
+        logger.info("converting '{src}' to OGG", src=src.resolve().absolute())
         out = subprocess.check_output(
-            [WW2OGG, str(src.absolute()), "--pcb", str(PCB.absolute())],
+            [WW2OGG, str(src.resolve().absolute()), "--pcb", str(PCB.resolve().absolute())],
             stderr=subprocess.STDOUT)
         src.unlink()
-        logger.info("removed {src}", src=src.absolute())
+        logger.info("removed {src}", src=src.resolve().absolute())
     except subprocess.CalledProcessError as cpe:
         logger.error(
             "ww2ogg error for '{src}': code={code}, out={o}",
-            src=src,
+            src=src.resolve().absolute(),
             code=cpe.returncode,
             o=out.decode("utf-8"),
             exc_info=True,
