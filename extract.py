@@ -34,13 +34,12 @@ if getattr(sys, "frozen", False):
 else:
     BASE_PATH = Path("")
 
+MAX_PATH = 260
 WAVESCAN = BASE_PATH / Path("bin/wavescan.bms")
 QUICKBMS = BASE_PATH / Path("bin/quickbms.exe")
 WW2OGG = BASE_PATH / Path("bin/ww2ogg.exe")
 PCB = BASE_PATH / Path("bin/packed_codebooks_aoTuV_603.bin")
-ID_CSV_PATH = Path("id_to_file.csv")
 MAX_WORKERS = 1
-P = Path("\\\\?\\")
 
 MEMORY_BANK_PAT = re.compile(
     r"^\t+([0-9]+)\t+([\-\w ]+)\t+([\-\w:\\.() ]+)\t+(\\[\w \-\\]+)\t+([0-9]+)$"
@@ -176,7 +175,7 @@ def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
         logger.info("decoding '{b}'...", b=bnk_file.absolute())
         quickbms_out = subprocess.check_output(
             [str(QUICKBMS.absolute()), "-o", str(WAVESCAN.absolute()),
-             str(P / bnk_file.absolute()), str(P / out_dir.absolute())],
+             str(bnk_file.absolute()), str(out_dir.absolute())],
             stderr=subprocess.STDOUT,
         )
         try:
@@ -235,7 +234,7 @@ def ww2ogg(src: Path):
     try:
         logger.info("converting '{src}' to OGG", src=src.absolute())
         out = subprocess.check_output(
-            [WW2OGG, str(P / src.absolute()), "--pcb", str(PCB.absolute())],
+            [WW2OGG, str(src.absolute()), "--pcb", str(PCB.absolute())],
             stderr=subprocess.STDOUT)
         src.unlink()
         logger.info("removed {src}", src=src.absolute())
@@ -259,7 +258,6 @@ def main():
     wwise_dir = Path(args.wwise_dir)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(exist_ok=True)
-    ID_CSV_PATH.touch()
 
     logger.info("processing audio files in '{wd}'", wd=wwise_dir.absolute())
 

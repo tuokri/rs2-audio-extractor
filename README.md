@@ -1,8 +1,11 @@
 # rs2-audio-extractor
 
-Decode Rising Storm 2: Vietnam Wwise audio files
+Decode Rising Storm 2: Vietnam Wwise audio files to Ogg format
 while preserving original file names and project structure
 where possible.
+
+Good performance by taking advantage of multiple CPU cores
+by using multiprocessing.
 
 ## Usage
 
@@ -10,9 +13,13 @@ Show help:
 
 `extract.exe --help`
 
-Parse files in `Wwiseaudio` and write output in `output` in Ogg format:
+Parse files in `WwiseAudio` and write output in `output` in Ogg format:
 
 `extract.exe "C:\...\WwiseAudio" "C:\output"`
+
+Number of CPU cores to use may be set with the `--max-workers X` argument,
+where X is the number of CPU cores to use. All available CPU cores 
+are used by default.
 
 ## Download
 
@@ -22,8 +29,7 @@ From releases: https://github.com/tuokri/rs2-audio-extractor/releases
 
 ### ww2ogg errors or errors opening decoded files
 
-The program output directory will have paths
-longer than the max default Windows path limit. 
+The program output directory will have paths longer than the max default Windows path limit. 
 
 Fix by enabling Win32 long paths and rebooting.
 
