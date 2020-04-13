@@ -17,10 +17,16 @@ from logbook import Logger
 from logbook import StreamHandler
 
 _sh = StreamHandler(sys.stdout, level="INFO", bubble=True)
-_fh = FileHandler("extract.log", level="INFO", bubble=True)
+_fh = FileHandler("extract.log", mode="w", level="INFO", bubble=True)
 logger = Logger(__name__)
 logger.handlers.append(_sh)
 logger.handlers.append(_fh)
+
+
+def do_log_stuff(subscriber):
+    with subscriber:
+        subscriber.dispatch_forever()
+
 
 if getattr(sys, "frozen", False):
     # noinspection PyUnresolvedReferences,PyProtectedMember
@@ -280,6 +286,7 @@ def main():
             f"do not match ({len(orig_bnk2decode_info)} "
             f"!= {len(memory_bnk_meta_file2metadata)})")
 
+    wem_src2wem_dst = {}
     # Move .wem files to out_dir in correct places.
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for bnk_meta_file, meta in streamed_bnk_meta_file2metadata.items():
@@ -291,6 +298,7 @@ def main():
                     dst = out_dir / wwise_path.relative_to(
                         wwise_path.anchor).with_suffix(".wem")
                     executor.submit(copy, src, dst)
+                    wem_src2wem_dst[src] = dst
                 else:
                     logger.warning(
                         "found references to {src} in metadata, but "
@@ -323,23 +331,22 @@ def main():
     futures.wait(fs, return_when=futures.ALL_COMPLETED)
 
     fs = []
-    done_wems = []
     # Convert all .wem and .bin files to .ogg.
     executor = ProcessPoolExecutor(max_workers=MAX_WORKERS)
     for bin_file in out_dir.rglob("*.bin"):
         fs.append(executor.submit(ww2ogg, bin_file))
     for wem_file in out_dir.rglob("*.wem"):
         fs.append(executor.submit(ww2ogg, wem_file))
-        done_wems.append(wem_file.stem)
 
     futures.wait(fs, return_when=futures.ALL_COMPLETED)
 
-    done_wems = set(done_wems)
+    done_wems_stems = set([ws.stem for ws in wem_src2wem_dst.keys()])
     source_wems = [w for w in wwise_dir.rglob("*.wem")]
-    source_wems_stems = set([w.stem for w in wwise_dir.rglob("*.wem")])
-    wem_diff = source_wems_stems.difference(done_wems)
+    source_wems_stems = set([w.stem for w in source_wems])
+    wem_diff = source_wems_stems.difference(done_wems_stems)
     if wem_diff:
-        logger.warn("failed to determine filename for the the following files:")
+        logger.warn("failed to determine filename for "
+                    "the the following {num} files:", num=len(wem_diff))
     for ws in source_wems:
         if ws.stem in wem_diff:
             logger.info(ws)
@@ -358,4 +365,5 @@ if __name__ == "__main__":
     import multiprocessing
 
     multiprocessing.freeze_support()
+
     main()
