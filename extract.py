@@ -1,4 +1,5 @@
 import argparse
+import multiprocessing as mp
 import os
 import re
 import shutil
@@ -39,6 +40,8 @@ QUICKBMS = BASE_PATH / Path("bin/quickbms.exe")
 WW2OGG = BASE_PATH / Path("bin/ww2ogg.exe")
 PCB = BASE_PATH / Path("bin/packed_codebooks_aoTuV_603.bin")
 MAX_WORKERS = 1
+ID_TO_FILENAME = "id_to_filename.txt"
+SENTINEL = (None, None)
 
 MEMORY_BANK_PAT = re.compile(
     r"^\t+([0-9]+)\t+([\-\w ]+)\t+([\-\w:\\.() ]+)\t+(\\[\w \-\\]+)\t+([0-9]+)$"
@@ -196,10 +199,12 @@ def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
     return filename2datasize
 
 
-def move(src: Path, dst: Path):
+def move(src: Path, dst: Path, id_to_filename_queue: mp.Queue = None):
     try:
         dst.parent.mkdir(parents=True, exist_ok=True)
         src.replace(dst)
+        if id_to_filename_queue:
+            id_to_filename_queue.put((src, dst))
         logger.info("moved '{src}' -> '{dst}'",
                     src=src.absolute(), dst=dst.absolute())
     except Exception as e:
@@ -212,10 +217,12 @@ def move(src: Path, dst: Path):
         )
 
 
-def copy(src: Path, dst: Path):
+def copy(src: Path, dst: Path, id_to_filename_queue: mp.Queue = None):
     try:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(src, dst)
+        if id_to_filename_queue:
+            id_to_filename_queue.put((src, dst))
         logger.info("copied '{src}' -> '{dst}'",
                     src=src.absolute(), dst=dst.absolute())
     except Exception as e:
@@ -247,6 +254,25 @@ def ww2ogg(src: Path):
         )
 
 
+def id_to_filename_worker(queue: mp.Queue, out_file: Path):
+    f = None
+    try:
+        f = out_file.open(mode="a")
+        item = queue.get()
+        while item != SENTINEL:
+            try:
+                f.write(f"{item[0].name}\t{item[1].name}\n")
+            except Exception as e:
+                logger.error(e, exc_info=True)
+            item = queue.get()
+        logger.info("id_to_filename_worker got sentinel, stopping")
+    except Exception as e:
+        logger.error(e, exc_info=True)
+    finally:
+        if f:
+            f.close()
+
+
 def main():
     start = time.time()
 
@@ -257,6 +283,23 @@ def main():
     wwise_dir = Path(args.wwise_dir)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(exist_ok=True)
+    id_to_filename_path = out_dir / ID_TO_FILENAME
+    manager = mp.Manager()
+    queue = manager.Queue()
+
+    try:
+        id_to_filename_path.unlink()
+        logger.info("removed old {id_file}", id_file=id_to_filename_path.absolute())
+    except FileNotFoundError:
+        pass
+
+    id_to_filename_path.touch()
+    logger.info("writing old ID -> new filename info in '{id_file}'",
+                id_file=id_to_filename_path.absolute())
+
+    id_to_filename_p = mp.Process(target=id_to_filename_worker,
+                                  args=(queue, id_to_filename_path))
+    id_to_filename_p.start()
 
     logger.info("processing audio files in '{wd}'", wd=wwise_dir.absolute())
 
@@ -278,10 +321,27 @@ def main():
             orig_bnk2decode_info = completed_fut.result()
 
     if len(memory_bnk_meta_file2metadata) != len(orig_bnk2decode_info):
-        raise ValueError(
-            f"Amount of Bank and metadata files "
-            f"do not match ({len(orig_bnk2decode_info)} "
-            f"!= {len(memory_bnk_meta_file2metadata)})")
+        logger.warning(
+            "Amount of Bank and metadata files "
+            "do not match ({first}) != {second})",
+            first=len(orig_bnk2decode_info),
+            second=len(memory_bnk_meta_file2metadata)
+        )
+
+        s1 = memory_bnk_meta_file2metadata.keys()
+        s2 = set([key.stem for key in orig_bnk2decode_info])
+
+        to_del = []
+        diff = s2.difference(s1)
+        for d in diff:
+            # TODO: expensive!
+            for key in orig_bnk2decode_info:
+                if key.stem == d:
+                    logger.warn("ignoring {f}", f=str(key))
+                    to_del.append(key)
+
+        for td in to_del:
+            del orig_bnk2decode_info[td]
 
     wem_src2wem_dst = {}
     # Move .wem files to out_dir in correct places.
@@ -294,7 +354,7 @@ def main():
                     wwise_path = Path(m.wwise_object_path)
                     dst = out_dir / wwise_path.relative_to(
                         wwise_path.anchor).with_suffix(".wem")
-                    executor.submit(copy, src, dst)
+                    executor.submit(copy, src, dst, queue)
                     wem_src2wem_dst[src] = dst
                 else:
                     logger.warning(
@@ -323,7 +383,7 @@ def main():
         src = out_dir / f"{decoded_file}.bin"
         wwise_path = Path(meta.wwise_object_path)
         dst = out_dir / wwise_path.relative_to(wwise_path.anchor).with_suffix(".bin")
-        fs.append(executor.submit(move, src, dst))
+        fs.append(executor.submit(move, src, dst, queue))
 
     futures.wait(fs, return_when=futures.ALL_COMPLETED)
 
@@ -353,6 +413,9 @@ def main():
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for wem_file in out_dir.rglob("*.wem"):
             fs.append(executor.submit(ww2ogg, wem_file))
+
+    queue.put(SENTINEL)
+    id_to_filename_p.join()
 
     secs = time.time() - start
     logger.info("finished successfully in {secs:.2f} seconds", secs=secs)
