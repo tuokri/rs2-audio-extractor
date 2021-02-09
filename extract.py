@@ -35,11 +35,12 @@ if getattr(sys, "frozen", False):
 else:
     BASE_PATH = Path("")
 
+REVORB = BASE_PATH / Path("bin/RevorbStd.exe")
 WAVESCAN = BASE_PATH / Path("bin/wavescan.bms")
 QUICKBMS = BASE_PATH / Path("bin/quickbms.exe")
 WW2OGG = BASE_PATH / Path("bin/ww2ogg.exe")
 PCB = BASE_PATH / Path("bin/packed_codebooks_aoTuV_603.bin")
-MAX_WORKERS = 1
+MAX_WORKERS = os.cpu_count()  # TODO: --workers argument doesn't work for now.
 ID_TO_FILENAME = "id_to_filename.txt"
 SENTINEL = (None, None)
 
@@ -133,6 +134,7 @@ def parse_bank_metadata(bank: Path) -> Tuple[List[BankMetaData], List[BankMetaDa
     ret_memory = []
     ret_streamed = []
     try:
+        logger.info("parsing bank metadata '{bank}'", bank=bank.absolute())
         with bank.open("r", encoding="utf-8") as f:
             for line in f:
                 if line.lower().startswith("in memory audio"):
@@ -156,12 +158,14 @@ def parse_bank_metadata(bank: Path) -> Tuple[List[BankMetaData], List[BankMetaDa
     return ret_memory, ret_streamed
 
 
-def decode_banks(wwise_dir: Path, out_dir: Path) -> dict:
+def decode_banks(wwise_dir: Path, out_dir: Path, quickbms_log,
+                 quickbms_log_lock) -> dict:
     orig_bnk2decode_info = {}
     fut2orig_bnk = {}
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for bnk_file in wwise_dir.rglob("*.bnk"):
-            fut2orig_bnk[executor.submit(decode_bank, bnk_file, out_dir)] = bnk_file
+            fut2orig_bnk[executor.submit(decode_bank, bnk_file, out_dir,
+                                         quickbms_log, quickbms_log_lock)] = bnk_file
 
     for completed_fut in futures.as_completed(fut2orig_bnk):
         result = completed_fut.result()
@@ -171,7 +175,8 @@ def decode_banks(wwise_dir: Path, out_dir: Path) -> dict:
     return orig_bnk2decode_info
 
 
-def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
+def decode_bank(bnk_file: Path, out_dir: Path, quickbms_log: Path,
+                quickbms_log_lock: mp.Lock) -> dict:
     quickbms_out = []
     try:
         logger.info("decoding '{b}'...", b=bnk_file.absolute())
@@ -180,6 +185,16 @@ def decode_bank(bnk_file: Path, out_dir: Path) -> dict:
              str(bnk_file.absolute()), str(out_dir.absolute())],
             stderr=subprocess.STDOUT,
         )
+        with quickbms_log_lock:
+            with quickbms_log.open("ab") as f:
+                f.write(b"*" * 10)
+                f.write(b" ")
+                f.write(bytes(bnk_file.absolute()))
+                f.write(b" ")
+                f.write(b"*" * 10)
+                f.write(b"\n")
+                f.write(quickbms_out)
+                f.write(b"\n")
         try:
             quickbms_out = quickbms_out.decode("utf-8")
         except Exception as e:
@@ -235,6 +250,15 @@ def copy(src: Path, dst: Path, id_to_filename_queue: mp.Queue = None):
         )
 
 
+def revorb(ogg_file: Path):
+    logger.info("running revorb on {f}", f=ogg_file.absolute())
+    try:
+        subprocess.check_call([REVORB, str(ogg_file.absolute())])
+    except subprocess.CalledProcessError as cpe:
+        logger.exception("error running revorb on {f}: {e}",
+                         f=ogg_file.absolute(), e=cpe)
+
+
 def ww2ogg(src: Path):
     out = b""
     try:
@@ -244,13 +268,13 @@ def ww2ogg(src: Path):
             stderr=subprocess.STDOUT)
         src.unlink()
         logger.info("removed {src}", src=src.resolve().absolute())
+        revorb(src.with_suffix(".ogg"))
     except subprocess.CalledProcessError as cpe:
-        logger.error(
+        logger.exception(
             "ww2ogg error for '{src}': code={code}, out={o}",
             src=src.resolve().absolute(),
             code=cpe.returncode,
             o=out.decode("utf-8"),
-            exc_info=True,
         )
 
 
@@ -276,20 +300,26 @@ def id_to_filename_worker(queue: mp.Queue, out_file: Path):
 def main():
     start = time.time()
 
-    global MAX_WORKERS
-
     args = parse_args()
-    MAX_WORKERS = args.workers
     wwise_dir = Path(args.wwise_dir)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(exist_ok=True)
     id_to_filename_path = out_dir / ID_TO_FILENAME
     manager = mp.Manager()
     queue = manager.Queue()
+    quickbms_log_lock = manager.Lock()
+    quickbms_log = out_dir / "quickbms.log"
 
     try:
         id_to_filename_path.unlink()
         logger.info("removed old {id_file}", id_file=id_to_filename_path.absolute())
+    except FileNotFoundError:
+        pass
+
+    logger.info("QuickBMS log: '{qlog}'", qlog=quickbms_log.absolute())
+    try:
+        quickbms_log.unlink()
+        logger.info("removed old {f}", f=quickbms_log.absolute())
     except FileNotFoundError:
         pass
 
@@ -307,7 +337,8 @@ def main():
     # Parse .bnk files and metadata.
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         fut2func[executor.submit(parse_banks_metadata, wwise_dir)] = parse_banks_metadata
-        fut2func[executor.submit(decode_banks, wwise_dir, out_dir)] = decode_banks
+        fut2func[executor.submit(decode_banks, wwise_dir,
+                                 out_dir, quickbms_log, quickbms_log_lock)] = decode_banks
 
     memory_bnk_meta_file2metadata = {}
     streamed_bnk_meta_file2metadata = {}
