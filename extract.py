@@ -29,11 +29,12 @@ def do_log_stuff(subscriber):
         subscriber.dispatch_forever()
 
 
-if getattr(sys, "frozen", False):
-    # noinspection PyUnresolvedReferences,PyProtectedMember
-    BASE_PATH = Path(sys._MEIPASS)
-else:
-    BASE_PATH = Path("")
+# if getattr(sys, "frozen", False):
+#     # noinspection PyUnresolvedReferences,PyProtectedMember
+#     BASE_PATH = Path(sys._MEIPASS)
+# else:
+#     BASE_PATH = Path("")
+BASE_PATH = Path("")
 
 REVORB = BASE_PATH / Path("bin/RevorbStd.exe")
 WAVESCAN = BASE_PATH / Path("bin/wavescan.bms")
