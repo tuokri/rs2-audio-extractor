@@ -14,7 +14,8 @@ from typing import List
 from typing import Tuple
 
 import logbook
-from logbook.queues import MultiProcessingHandler, MultiProcessingSubscriber
+from logbook.queues import MultiProcessingHandler
+from logbook.queues import MultiProcessingSubscriber
 
 # if getattr(sys, "frozen", False):
 #     # noinspection PyUnresolvedReferences,PyProtectedMember
@@ -33,10 +34,13 @@ ID_TO_FILENAME = "id_to_filename.txt"
 SENTINEL = (None, None)
 
 MEMORY_BANK_PAT = re.compile(
-    r"^\t+([0-9]+)\t+([\-\w ]+)\t+([\-\w:\\.() ]+)\t+(\\[\w \-\\]+)\t+([0-9]+)$"
+    r"^\t+([0-9]+)\t+([\-\w ,()_]+)\t+([_\-\w:\\.() ,]+)\t+(\\[_()\w \-\\,]+)\t+([0-9]+)$"
 )
+# STREAMED_BANK_PAT = re.compile(
+#     r"^\t+([0-9]+)\t+([\-\w ]+)\t+([\-\w:\\.() ]+)\t+([\-\w:\\.() ]+)\t+(\\[\w \-\\]+)\t+$"
+# )
 STREAMED_BANK_PAT = re.compile(
-    r"^\t+([0-9]+)\t+([\-\w ]+)\t+([\-\w:\\.() ]+)\t+([\-\w:\\.() ]+)\t+(\\[\w \-\\]+)\t+$"
+    r"^\t+([0-9]+)\t+([\-\w ]+)\t+([\-\w:\\.() ]+)\t+([\-\w:\\.() ]+)\t+(\\[\w \-\\]+)\t*(.*)\t*$"
 )
 QUICKBMS_OUT_PAT = re.compile(r"\s{2}[0-9]+\s([0-9]+)\s+(.*)\r\n")
 
@@ -100,6 +104,8 @@ def parse_banks_metadata(wwise_dir: Path, queue: mp.Queue) -> Tuple[dict, dict]:
 
 def parse_memory_audio_meta(line: str):
     match = re.match(MEMORY_BANK_PAT, line)
+    if not match:
+        raise ValueError(f"can't match MEMORY_BANK_PAT for line: '{line}'")
     return BankMetaData(
         audio_id=int(match.group(1)),
         name=match.group(2),
@@ -150,7 +156,7 @@ def parse_bank_metadata(bank: Path, queue: mp.Queue) -> Tuple[List[BankMetaData]
                     ret_streamed.append(parse_streamed_audio_meta(line))
 
     except Exception as e:
-        logbook.error("error parsing {bank}: {e}", bank=bank, e=repr(e))
+        logbook.exception("error parsing {bank}: {e}", bank=bank, e=repr(e))
     return ret_memory, ret_streamed
 
 
@@ -177,7 +183,7 @@ def decode_bank(bnk_file: Path, out_dir: Path, quickbms_log: Path,
                 quickbms_log_lock: mp.Lock, queue: mp.Queue) -> dict:
     setup_logging(queue)
 
-    quickbms_out = []
+    quickbms_out = ""
     try:
         logbook.info("decoding '{b}'...", b=bnk_file.absolute())
         quickbms_out = subprocess.check_output(
@@ -429,12 +435,20 @@ def main():
         meta = memory_bnk_meta_file2metadata[orig_bnk_file]
 
         if len(decode_info) != len(meta):
-            raise ValueError(f"decode_info and meta length mismatch "
-                             f"{len(decode_info)} != {len(meta)}")
+            logbook.error("decode_info and meta length mismatch: {len1} != {len2} for bnk: '{bnk}'",
+                          len1=len(decode_info), len2=len(meta), bnk=orig_bnk_file)
+            # print(decode_info)
+            # print(meta)
+            continue
+            # raise ValueError(f"decode_info and meta length mismatch "
+            #                  f"{len(decode_info)} != {len(meta)}")
 
         for m, (decoded_stem, decoded_size) in zip(meta, decode_info.items()):
             if m.data_size != decoded_size:
-                raise ValueError(f"{m.data_size} != {decoded_size}")
+                # raise ValueError(f"{m.data_size} != {decoded_size}")
+                logbook.error("metadata size and decoded data size length mismatch: {len1} != {len2}",
+                              len1=m.data_size, len2=decoded_size)
+                continue
             decoded_file2metas[decoded_stem] = m
 
     fs = []
