@@ -27,6 +27,10 @@ by using multiprocessing.
 
 `.\extract.exe J:\SteamLibrary\steamapps\common\killingfloor2\KFGame\BrewedPC\WwiseAudio\Russian\ H:\KF2Audio_Russian`
 
+**Extract KF2 English audio:**
+
+`.\extract.exe J:\SteamLibrary\steamapps\common\killingfloor2\KFGame\BrewedPC\WwiseAudio\Windows H:\KF2Audio_English`
+
 **Extract RS2 audio:**
 
 `.\extract.exe "C:\Program Files (x86)\Steam\steamapps\common\Rising Storm 2\ROGame\BrewedPC\WwiseAudio\Windows" H:\RS2_Audio`
