@@ -19,7 +19,7 @@ Parse files in `WwiseAudio` and write output in `output` in Ogg format:
 
 `extract.exe "C:\...\WwiseAudio" "C:\output"`
 
-Concrete usage examples:
+Concrete usage examples commands (open PowerShell or cmd.exe in the folder where you extracted extract.exe):
 
 Extract KF2 Russian audio:
 
