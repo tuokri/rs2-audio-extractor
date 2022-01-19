@@ -7,6 +7,8 @@ where possible.
 Good performance by taking advantage of multiple CPU cores
 by using multiprocessing.
 
+Works with Killing Floor 2.
+
 ## Usage
 
 Show help:
