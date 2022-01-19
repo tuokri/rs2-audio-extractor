@@ -7,7 +7,7 @@ where possible.
 Good performance by taking advantage of multiple CPU cores
 by using multiprocessing.
 
-Works with Killing Floor 2.
+Works with Killing Floor 2. May also work with other games that provide Wwise metadata (txt) files.
 
 ## Usage
 
