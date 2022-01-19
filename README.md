@@ -36,3 +36,15 @@ The program output directory will have paths longer than the max default Windows
 Fix by enabling Win32 long paths and rebooting.
 
 https://www.howtogeek.com/266621/how-to-make-windows-10-accept-file-paths-over-260-characters/
+
+## Technical details
+
+Third party software used:
+
+QuickBMS: https://aluigi.altervista.org/quickbms.htm
+
+The extractor also uses my custom forks of the following software:
+
+ww2ogg: https://github.com/tuokri/ww2ogg
+
+revorbstd: https://github.com/tuokri/revorbstd
