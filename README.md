@@ -19,6 +19,16 @@ Parse files in `WwiseAudio` and write output in `output` in Ogg format:
 
 `extract.exe "C:\...\WwiseAudio" "C:\output"`
 
+Concrete usage examples:
+
+Extract KF2 Russian audio:
+
+`.\extract.exe J:\SteamLibrary\steamapps\common\killingfloor2\KFGame\BrewedPC\WwiseAudio\Russian\ H:\KF2Audio_Russian`
+
+Extract RS2 audio:
+
+`.\extract.exe "C:\Program Files (x86)\Steam\steamapps\common\Rising Storm 2\ROGame\BrewedPC\WwiseAudio\Windows" H:\RS2_Audio`
+
 ## Download
 
 From releases: https://github.com/tuokri/rs2-audio-extractor/releases
