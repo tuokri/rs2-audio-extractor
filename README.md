@@ -19,10 +19,6 @@ Parse files in `WwiseAudio` and write output in `output` in Ogg format:
 
 `extract.exe "C:\...\WwiseAudio" "C:\output"`
 
-Number of CPU cores to use may be set with the `--max-workers X` argument,
-where X is the number of CPU cores to use. All available CPU cores 
-are used by default.
-
 ## Download
 
 From releases: https://github.com/tuokri/rs2-audio-extractor/releases
