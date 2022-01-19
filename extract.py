@@ -435,8 +435,10 @@ def main():
         meta = memory_bnk_meta_file2metadata[orig_bnk_file]
 
         if len(decode_info) != len(meta):
-            logbook.error("decode_info and meta length mismatch: {len1} != {len2} for bnk: '{bnk}'",
-                          len1=len(decode_info), len2=len(meta), bnk=orig_bnk_file)
+            logbook.error("decode_info and meta length mismatch: "
+                          "{len1} != {len2} for bnk: '{bnk}'",
+                          len1=len(decode_info), len2=len(meta),
+                          bnk=orig_bnk_file)
             # print(decode_info)
             # print(meta)
             continue
@@ -446,7 +448,8 @@ def main():
         for m, (decoded_stem, decoded_size) in zip(meta, decode_info.items()):
             if m.data_size != decoded_size:
                 # raise ValueError(f"{m.data_size} != {decoded_size}")
-                logbook.error("metadata size and decoded data size length mismatch: {len1} != {len2}",
+                logbook.error("metadata size and decoded data size length mismatch: "
+                              "{len1} != {len2}",
                               len1=m.data_size, len2=decoded_size)
                 continue
             decoded_file2metas[decoded_stem] = m
