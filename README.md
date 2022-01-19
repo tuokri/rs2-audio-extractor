@@ -19,7 +19,7 @@ by using multiprocessing.
 
 `extract.exe "C:\...\WwiseAudio" "C:\output"`
 
-## Concrete usage examples commands
+## Concrete usage example commands
 
 **First open PowerShell or cmd.exe in the folder where you extracted extract.exe**
 
