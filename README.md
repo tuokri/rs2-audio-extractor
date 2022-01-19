@@ -19,7 +19,9 @@ by using multiprocessing.
 
 `extract.exe "C:\...\WwiseAudio" "C:\output"`
 
-Concrete usage examples commands (open PowerShell or cmd.exe in the folder where you extracted extract.exe):
+## Concrete usage examples commands
+
+**First open PowerShell or cmd.exe in the folder where you extracted extract.exe**
 
 **Extract KF2 Russian audio:**
 
