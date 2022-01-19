@@ -1,13 +1,13 @@
 # rs2-audio-extractor
 
-Decode Rising Storm 2: Vietnam Wwise audio files to Ogg format
+Decode Wwise audio files to Ogg format
 while preserving original file names and project structure
 where possible.
 
+Works with Rising Storm 2: Vietnam & Killing Floor 2. May also work with other games that provide Wwise metadata (txt) files.
+
 Good performance by taking advantage of multiple CPU cores
 by using multiprocessing.
-
-Works with Killing Floor 2. May also work with other games that provide Wwise metadata (txt) files.
 
 ## Usage
 
